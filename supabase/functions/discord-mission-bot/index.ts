@@ -167,12 +167,19 @@ async function fetchMissionById(id: string) {
 
 async function fetchAttendeesDetailed(missionId: string) {
   const { data, error } = await sb
-    .from("v_mission_attendees_detailed")
-    .select("attendee_name, attendance, role_in_mission, user_id")
+    .from("mission_signups")
+    .select("user_id,status,operational_role,created_at")
     .eq("mission_id", missionId)
-    .order("joined_at", { ascending: true });
+    .order("created_at", { ascending: true });
   if (error) throw error;
-  return data || [];
+  const rows = data || [];
+  const ids = [...new Set(rows.map((r: any) => r.user_id).filter(Boolean))];
+  const { data: profiles, error: profileError } = ids.length
+    ? await sb.from("profiles").select("user_id,handle,display_name").in("user_id", ids)
+    : { data: [], error: null };
+  if (profileError) throw profileError;
+  const names = new Map((profiles || []).map((p: any) => [p.user_id, p.display_name || p.handle]));
+  return rows.map((r: any) => ({ ...r, attendee_name: names.get(r.user_id) || r.user_id }));
 }
 
 async function upsertRsvp(
@@ -182,7 +189,7 @@ async function upsertRsvp(
 ) {
   if (status === "withdraw") {
     const { error } = await sb
-      .from("mission_attendees")
+      .from("mission_signups")
       .delete()
       .match({ mission_id: missionId, user_id: userId });
     if (error) throw error;
@@ -190,9 +197,9 @@ async function upsertRsvp(
   }
 
   const { error } = await sb
-    .from("mission_attendees")
+    .from("mission_signups")
     .upsert(
-      { mission_id: missionId, user_id: userId, attendance: status },
+      { mission_id: missionId, user_id: userId, status: status },
       { onConflict: "mission_id,user_id" },
     );
   if (error) throw error;
@@ -241,13 +248,12 @@ async function setAvailabilityForUser(userId: string, statusRaw: string) {
     const rows = (operations || []).map((m: any) => ({
       mission_id: m.id,
       user_id: userId,
-      attendance: "not_going",
-      updated_at: new Date().toISOString(),
+      status: "not_going",
     }));
 
     if (rows.length) {
       const { error: attendanceError } = await sb
-        .from("mission_attendees")
+        .from("mission_signups")
         .upsert(rows, { onConflict: "mission_id,user_id" });
 
       if (attendanceError) throw attendanceError;
@@ -881,17 +887,17 @@ async function handleOperationsView(
 
   const attendees = await fetchAttendeesDetailed(missionId);
   const going = attendees.filter((a: any) =>
-    (a.attendance || "").toLowerCase() === "going"
+    (a.status || "").toLowerCase() === "going"
   );
   const notGoing = attendees.filter((a: any) =>
-    (a.attendance || "").toLowerCase() === "not_going"
+    (a.status || "").toLowerCase() === "not_going"
   );
 
   const goingLines = going.length
     ? going
       .map((a: any) =>
         `✅ ${toTitleCase(a.attendee_name)}${
-          a.role_in_mission ? ` — ${toTitleCase(a.role_in_mission)}` : ""
+          a.operational_role ? ` — ${toTitleCase(a.operational_role)}` : ""
         }`
       )
       .join("\n")
@@ -901,7 +907,7 @@ async function handleOperationsView(
     ? notGoing
       .map((a: any) =>
         `❌ ${toTitleCase(a.attendee_name)}${
-          a.role_in_mission ? ` — ${toTitleCase(a.role_in_mission)}` : ""
+          a.operational_role ? ` — ${toTitleCase(a.operational_role)}` : ""
         }`
       )
       .join("\n")
@@ -1125,11 +1131,11 @@ async function handleLinkCommand(interaction: any, codeRaw: any) {
   });
 }
 
-// ---------- Mission attendance helper ----------
+// ---------- Mission status helper ----------
 async function fetchMissionsAttended(userId: string) {
   const { data, error } = await sb
-    .from("v_mission_attendees_detailed")
-    .select("mission_id, attendance")
+    .from("v_mission_signups_detailed")
+    .select("mission_id, status")
     .eq("user_id", userId);
 
   if (error) throw error;
@@ -1140,8 +1146,8 @@ async function fetchMissionsAttended(userId: string) {
     (data || [])
       .filter((row: any) =>
         row.mission_id &&
-        row.attendance &&
-        String(row.attendance).toLowerCase() !== "withdrawn"
+        row.status &&
+        String(row.status).toLowerCase() !== "withdrawn"
       )
       .map((row: any) => row.mission_id),
   );
@@ -1175,7 +1181,7 @@ async function handleProfile(interaction: any) {
   const rank = cleanNull(p.current_rank_name || "Unranked");
   const rankImg = cleanNull(p.current_rank_image_url || "");
 
-  // Count missions directly from the detailed attendance view.
+  // Count missions directly from the detailed status view.
   let missionsAttended: number | null = null;
   try {
     missionsAttended = await fetchMissionsAttended(p.user_id);
