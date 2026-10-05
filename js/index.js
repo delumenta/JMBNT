@@ -175,18 +175,18 @@
     try{
       if(status==='withdraw'){
         const {error} = await sb
-          .from('mission_attendees')
+          .from('mission_signups')
           .delete()
           .eq('mission_id',missionId)
           .eq('user_id',session.user.id);
         if(error) throw error;
       }else{
         const {error} = await sb
-          .from('mission_attendees')
+          .from('mission_signups')
           .upsert({
             mission_id:missionId,
             user_id:session.user.id,
-            attendance:status
+            status:status
           },{onConflict:'mission_id,user_id'});
         if(error) throw error;
       }
@@ -210,14 +210,14 @@
     }
 
     list.innerHTML = homeMissions.map(m=>{
-      const attendance = homeAttendance.get(m.id) || '';
-      const stateClass = attendance ? attendance : '';
+      const status = homeAttendance.get(m.id) || '';
+      const stateClass = status ? status : '';
       return `
         <div class="home-mission" data-home-mission="${esc(m.id)}">
           <div class="home-mission-head">
             <div class="home-mission-title">${esc(m.title || 'UNTITLED MISSION')}</div>
             <span class="home-mission-state ${esc(stateClass)}">
-              ${esc(prettyAttendance(attendance))}
+              ${esc(prettyAttendance(status))}
             </span>
           </div>
           <div class="home-mission-meta">
@@ -226,10 +226,10 @@
           </div>
 
           <div class="home-mission-rsvp">
-            <button class="home-rsvp-btn going ${attendance==='going'?'current':''}" type="button" data-rsvp="going" ${availabilityStatus==='awol'?'disabled':''}>
+            <button class="home-rsvp-btn going ${status==='going'?'current':''}" type="button" data-rsvp="going" ${availabilityStatus==='awol'?'disabled':''}>
               GOING
             </button>
-            <button class="home-rsvp-btn not-going ${attendance==='not_going'?'current':''}" type="button" data-rsvp="not_going">
+            <button class="home-rsvp-btn not-going ${status==='not_going'?'current':''}" type="button" data-rsvp="not_going">
               NOT GOING
             </button>
             <button class="home-rsvp-btn" type="button" data-rsvp="withdraw">
@@ -291,15 +291,15 @@
       if(homeMissions.length){
         const ids = homeMissions.map(m=>m.id);
         const {data:attendanceRows,error:attendanceError} = await sb
-          .from('mission_attendees')
-          .select('mission_id,attendance')
+          .from('mission_signups')
+          .select('mission_id,status')
           .eq('user_id',session.user.id)
           .in('mission_id',ids);
 
         if(attendanceError) throw attendanceError;
 
         (attendanceRows || []).forEach(a=>{
-          homeAttendance.set(a.mission_id,a.attendance);
+          homeAttendance.set(a.mission_id,a.status);
         });
       }
 
