@@ -490,7 +490,7 @@ tbody tr:hover{background:rgba(242,214,117,.08)}
   font-family:'Play';
   font-size:11px;
 }
-.modal .chip[data-attendance="not_going"]{
+.modal .chip[data-status="not_going"]{
   border-color:rgba(255,107,107,.6);
   color:#ff6b6b;
 }
@@ -727,7 +727,7 @@ tbody tr:hover{background:rgba(242,214,117,.08)}
       </div>
 
       <div class="subtle" style="margin-top:4px">
-        Click any mission card to open attendance.
+        Click any mission card to open status.
       </div>
     </div>
   </aside>
@@ -936,10 +936,10 @@ async function loadMissions(){
   let crewCounts = {};
   try{
     const { data:att, error:err2 } = await sb
-      .from('mission_attendees')
-      .select('mission_id,attendance');
+      .from('mission_signups')
+      .select('mission_id,status');
     if(!err2 && att){
-      att.filter(a=>a.attendance==='going').forEach(a=>{
+      att.filter(a=>a.status==='going').forEach(a=>{
         crewCounts[a.mission_id] = (crewCounts[a.mission_id]||0)+1;
       });
     }
@@ -1201,10 +1201,10 @@ $('#exportCsv').addEventListener('click',()=>{
 async function loadOngoing(){
   if(!session || !sb) return;
   const { data:att, error:e1 } = await sb
-    .from('mission_attendees')
-    .select('mission_id,attendance,user_id')
+    .from('mission_signups')
+    .select('mission_id,status,user_id')
     .eq('user_id',session.user.id)
-    .eq('attendance','going');
+    .eq('status','going');
   if(e1){
     $('#ongoingList').innerHTML =
       `<div class="subtle" style="color:var(--bad)">Failed to load: ${esc(e1.message)}</div>`;
@@ -1273,12 +1273,12 @@ async function openAttendance(id,title){
 
   $('#attSelfSave').onclick = async () => {
     const val = $('#attSelfSelect').value || null;
-    if(!val){ alert('Select your attendance status');return; }
+    if(!val){ alert('Select your status status');return; }
 
     if(val === 'withdraw'){
       // withdraw = delete the row instead of saving invalid status
       const { error } = await sb
-        .from('mission_attendees')
+        .from('mission_signups')
         .delete()
         .eq('mission_id',ATT_MISSION_ID)
         .eq('user_id',session.user.id);
@@ -1286,11 +1286,11 @@ async function openAttendance(id,title){
       $('#attSelfSelect').value = '';
     } else {
       const { error } = await sb
-        .from('mission_attendees')
+        .from('mission_signups')
         .upsert({
           mission_id: ATT_MISSION_ID,
           user_id: session.user.id,
-          attendance: val
+          status: val
         },{ onConflict:'mission_id,user_id' });
       if(error){ alert('Save failed: '+error.message);return; }
     }
@@ -1326,10 +1326,10 @@ async function loadAttendees(){
   listEl.innerHTML = '<span class="subtle">Loading…</span>';
 
   const { data, error } = await sb
-    .from('v_mission_attendees_detailed')
+    .from('mission_signups')
     .select('*')
     .eq('mission_id',ATT_MISSION_ID)
-    .order('joined_at',{ascending:true});
+    .order('created_at',{ascending:true});
   if(error){
     listEl.innerHTML = `<span class="subtle" style="color:var(--bad)">Load failed: ${esc(error.message)}</span>`;
     return;
@@ -1356,7 +1356,7 @@ async function loadAttendees(){
   rows.forEach(a=>{
     const chip=document.createElement('div');
     chip.className='chip';
-    chip.dataset.attendance = (a.attendance||'').toLowerCase();
+    chip.dataset.status = (a.status||'').toLowerCase();
     const canEdit = canManageAll || a.user_id===session.user.id;
 
     const selectHtml = `<select data-uid="${esc(a.user_id)}" ${canEdit?'':'disabled'}>
@@ -1366,12 +1366,12 @@ async function loadAttendees(){
     chip.innerHTML = `
       <span>${esc(a.attendee_name || a.user_id.slice(0,8))}</span>
       ${selectHtml}
-      <span class="subtle">${esc(a.attendance||'')}</span>
+      <span class="subtle">${esc(a.status||'')}</span>
       ${canEdit ? `<button class="x" type="button" data-uid="${esc(a.user_id)}">x</button>` : ''}
     `;
 
     const sel = chip.querySelector('select');
-    if(sel){ sel.value = a.role_in_mission || ''; }
+    if(sel){ sel.value = a.operational_role || ''; }
 
     if(canEdit){
       const xBtn = chip.querySelector('button.x');
@@ -1379,7 +1379,7 @@ async function loadAttendees(){
         xBtn.addEventListener('click',async()=>{
           const uid = xBtn.getAttribute('data-uid');
           const { error } = await sb
-            .from('mission_attendees')
+            .from('mission_signups')
             .delete()
             .eq('mission_id',ATT_MISSION_ID)
             .eq('user_id',uid);
@@ -1394,8 +1394,8 @@ async function loadAttendees(){
           const uid = sel.getAttribute('data-uid');
           const role = sel.value || null;
           const { error } = await sb
-            .from('mission_attendees')
-            .update({ role_in_mission: role })
+            .from('mission_signups')
+            .update({ operational_role: role })
             .eq('mission_id',ATT_MISSION_ID)
             .eq('user_id',uid);
           if(error){ alert('Update failed: '+error.message);return; }
