@@ -2813,7 +2813,7 @@ button{
                     line-height:1.5;
                   "
                 >
-                  #1 most-used role across mission attendance.
+                  #1 most-used role across mission status.
                 </div>
 
 
@@ -2846,7 +2846,7 @@ button{
                     line-height:1.5;
                   "
                 >
-                  #2 most-used role across mission attendance.
+                  #2 most-used role across mission status.
                 </div>
 
 
@@ -4525,10 +4525,10 @@ async function loadMemberMissions(
     } =
       await sb
         .from(
-          "v_mission_attendees_detailed"
+          "mission_signups"
         )
         .select(
-          "mission_id, attendance, role_in_mission, missions(id,title,start_time)"
+          "mission_id, status, operational_role, missions(id,title,start_time)"
         )
         .eq(
           "user_id",
@@ -4563,10 +4563,10 @@ async function loadMemberMissions(
       } =
         await sb
           .from(
-            "v_mission_attendees_detailed"
+            "mission_signups"
           )
           .select(
-            "mission_id, attendance, role_in_mission"
+            "mission_id, status, operational_role"
           )
           .eq(
             "user_id",
@@ -4743,7 +4743,7 @@ async function loadMemberMissions(
       .filter(
         x =>
           String(
-            x.attendance ||
+            x.status ||
             ""
           )
             .toLowerCase() !==
@@ -4757,7 +4757,7 @@ async function loadMemberMissions(
           const role =
             toTitleCase(
               String(
-                x.role_in_mission ||
+                x.operational_role ||
                 ""
               )
                 .trim()
@@ -4905,8 +4905,8 @@ async function loadMemberMissions(
                 : "";
 
 
-            const attendance =
-              x.attendance ||
+            const status =
+              x.status ||
               "—";
 
 
@@ -4932,12 +4932,12 @@ async function loadMemberMissions(
                   ${esc(when)}
                   ${when ? " · " : ""}
                   Attendance:
-                  ${esc(attendance)}
+                  ${esc(status)}
 
                   ${
-                    x.role_in_mission
+                    x.operational_role
 
-                      ? ` · Role: ${esc(toTitleCase(x.role_in_mission))}`
+                      ? ` · Role: ${esc(toTitleCase(x.operational_role))}`
 
                       : ""
                   }
@@ -5283,7 +5283,7 @@ function viewMember(
 
 
   $("#vFavouriteRoleMeta").textContent =
-    "#1 most-used role across mission attendance.";
+    "#1 most-used role across mission status.";
 
 
   $("#vSecondaryRole").innerHTML =
@@ -5295,7 +5295,7 @@ function viewMember(
 
 
   $("#vSecondaryRoleMeta").textContent =
-    "#2 most-used role across mission attendance.";
+    "#2 most-used role across mission status.";
 
 
 
@@ -5526,10 +5526,10 @@ async function loadRoster(){
 
       sb
         .from(
-          "v_mission_attendees_detailed"
+          "mission_signups"
         )
         .select(
-          "user_id, mission_id, attendance"
+          "user_id, mission_id, status"
         ),
 
       sb
@@ -5580,7 +5580,7 @@ async function loadRoster(){
   ) {
 
     console.warn(
-      "v_mission_attendees_detailed:",
+      "mission_signups:",
       attendanceError.message
     );
 
@@ -5636,12 +5636,12 @@ async function loadRoster(){
 
         &&
 
-        row.attendance
+        row.status
 
         &&
 
         String(
-          row.attendance
+          row.status
         )
           .toLowerCase() !==
           "withdrawn"
