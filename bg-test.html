@@ -2781,11 +2781,11 @@ document.addEventListener(
       ==================================================== */
 
       /*
-        Missions intentionally use the same attendance
+        Missions intentionally use the same status
         logic as admins.html:
 
-        Count this user's mission attendance rows except
-        attendance = Withdrawn.
+        Count this user's mission status rows except
+        status = Withdrawn.
 
         Hours and certifications continue to come from
         v_user_progress.
@@ -2818,10 +2818,10 @@ document.addEventListener(
 
           sb
             .from(
-              "v_mission_attendees_detailed"
+              "mission_signups"
             )
             .select(
-              "mission_id, attendance"
+              "mission_id, status"
             )
             .eq(
               "user_id",
@@ -2836,7 +2836,7 @@ document.addEventListener(
       if (missionErr) {
 
         console.warn(
-          "Mission attendance count failed:",
+          "Mission status count failed:",
           missionErr.message
         );
 
@@ -2856,10 +2856,10 @@ document.addEventListener(
 
                 row.mission_id &&
 
-                row.attendance &&
+                row.status &&
 
                 String(
-                  row.attendance
+                  row.status
                 )
                   .toLowerCase() !==
                   "withdrawn"
@@ -2877,7 +2877,7 @@ document.addEventListener(
 
 
       /*
-        Use actual attendance count whenever possible.
+        Use actual status count whenever possible.
 
         If that query fails, fall back to the existing
         v_user_progress mission count.
