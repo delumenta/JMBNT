@@ -883,36 +883,21 @@ let missions = [];
 let ROLES = [];
 
 const DEFAULT_ROLES = [
-  { label:'operations lead' },
-  { label:'pilot' },
-  { label:'copilot' },
-  { label:'escort' },
-  { label:'tactician' },
-  { label:'fps' },
-  { label:'gunner' },
-  { label:'hauler' },
-  { label:'miner' },
-  { label:'salvager' },
-  { label:'engineer' },
-  { label:'medic' },
-  { label:'recon' },
-  { label:'runner' },
-  { label:'logistics' },
-  { label:'security' }
+  { label:'Command' },
+  { label:'Pilot' },
+  { label:'Co-Pilot' },
+  { label:'Engineer' },
+  { label:'Turret Gunner' },
+  { label:'Fighter Pilot' },
+  { label:'Medical' },
+  { label:'Security / Boarding' },
+  { label:'Cargo / Logistics' },
+  { label:'Ground Team' },
+  { label:'Support' }
 ];
 
 async function fetchRoles(){
-  try{
-    const { data, error } = await sb
-      .from('mission_roles')
-      .select('label,sort_order')
-      .order('sort_order',{ascending:true})
-      .order('label',{ascending:true});
-    if(error || !data || !data.length) ROLES = DEFAULT_ROLES;
-    else ROLES = data;
-  }catch(e){
-    ROLES = DEFAULT_ROLES;
-  }
+  ROLES = DEFAULT_ROLES;
 }
 function roleOptionsHtml(placeholder){
   const opts = (ROLES.length?ROLES:DEFAULT_ROLES)
@@ -1335,6 +1320,12 @@ async function loadAttendees(){
     return;
   }
   const rows = data || [];
+  const profileMap = new Map();
+  if(rows.length){
+    const ids=[...new Set(rows.map(r=>r.user_id).filter(Boolean))];
+    const {data:profiles}=await sb.from('profiles').select('user_id,handle,display_name').in('user_id',ids);
+    (profiles||[]).forEach(p=>profileMap.set(p.user_id,p));
+  }
   if(!rows.length){
     listEl.innerHTML = '<span class="subtle">No attendees yet.</span>';
     return;
@@ -1357,14 +1348,14 @@ async function loadAttendees(){
     const chip=document.createElement('div');
     chip.className='chip';
     chip.dataset.status = (a.status||'').toLowerCase();
-    const canEdit = canManageAll || a.user_id===session.user.id;
+    const canEdit = canManageAll;
 
     const selectHtml = `<select data-uid="${esc(a.user_id)}" ${canEdit?'':'disabled'}>
       ${roleOptionsHtml('role')}
     </select>`;
 
     chip.innerHTML = `
-      <span>${esc(a.attendee_name || a.user_id.slice(0,8))}</span>
+      <span>${esc(profileMap.get(a.user_id)?.display_name || profileMap.get(a.user_id)?.handle || a.user_id.slice(0,8))}</span>
       ${selectHtml}
       <span class="subtle">${esc(a.status||'')}</span>
       ${canEdit ? `<button class="x" type="button" data-uid="${esc(a.user_id)}">x</button>` : ''}
@@ -1378,11 +1369,9 @@ async function loadAttendees(){
       if(xBtn){
         xBtn.addEventListener('click',async()=>{
           const uid = xBtn.getAttribute('data-uid');
-          const { error } = await sb
-            .from('mission_signups')
-            .delete()
-            .eq('mission_id',ATT_MISSION_ID)
-            .eq('user_id',uid);
+          const { error } = uid===session.user.id
+            ? await sb.from('mission_signups').delete().eq('mission_id',ATT_MISSION_ID).eq('user_id',uid)
+            : await sb.rpc('command_remove_mission_signup',{p_mission_id:ATT_MISSION_ID,p_user_id:uid});
           if(error){ alert('Remove failed: '+error.message);return; }
           await loadAttendees();
           await loadOngoing();
@@ -1393,11 +1382,11 @@ async function loadAttendees(){
         sel.addEventListener('change',async()=>{
           const uid = sel.getAttribute('data-uid');
           const role = sel.value || null;
-          const { error } = await sb
-            .from('mission_signups')
-            .update({ operational_role: role })
-            .eq('mission_id',ATT_MISSION_ID)
-            .eq('user_id',uid);
+          const { error } = await sb.rpc('command_assign_mission_role',{
+            p_mission_id:ATT_MISSION_ID,
+            p_user_id:uid,
+            p_role:role
+          });
           if(error){ alert('Update failed: '+error.message);return; }
           await loadAttendees();
         });
