@@ -1692,7 +1692,7 @@
               row =>
                 row.mission_id &&
                 String(
-                  row.attendance ||
+                  row.status ||
                   ""
                 )
                   .toLowerCase() !==
@@ -1720,7 +1720,7 @@
         .filter(
           row =>
             String(
-              row.attendance ||
+              row.status ||
               ""
             )
               .toLowerCase() !==
@@ -1731,7 +1731,7 @@
 
             const role =
               titleCase(
-                row.role_in_mission
+                row.operational_role
               );
 
             if (!role) {
@@ -1984,12 +1984,12 @@
 
 
     function renderRoleAnalysis(
-      attendance
+      status
     ){
 
       const ranked =
         roleRanking(
-          attendance
+          status
         );
 
       const primary =
@@ -2026,13 +2026,13 @@
 
 
     function renderMissions(
-      attendance,
+      status,
       missionMap
     ){
 
       const count =
         calculateMissionCount(
-          attendance
+          status
         );
 
       $("#kMissions")
@@ -2044,7 +2044,7 @@
           `${count} // MISSIONS`;
 
       const rows =
-        (attendance || [])
+        (status || [])
           .slice()
           .sort(
             (a,b) => {
@@ -2106,7 +2106,7 @@
 
                 const status =
                   titleCase(
-                    row.attendance ||
+                    row.status ||
                     "Recorded"
                   );
 
@@ -2130,7 +2130,7 @@
                     <span>
                       ${esc(
                         titleCase(
-                          row.role_in_mission ||
+                          row.operational_role ||
                           "—"
                         )
                       )}
@@ -2485,10 +2485,10 @@
 
           sb
             .from(
-              "v_mission_attendees_detailed"
+              "mission_signups"
             )
             .select(
-              "mission_id,attendance,role_in_mission"
+              "mission_id,status,operational_role"
             )
             .eq(
               "user_id",
@@ -2529,7 +2529,7 @@
         rankProgressResult.data ||
         null;
 
-      const attendance =
+      const status =
         attendanceResult.error
           ? []
           : attendanceResult.data || [];
@@ -2569,7 +2569,7 @@
       ) {
 
         console.warn(
-          "v_mission_attendees_detailed:",
+          "mission_signups:",
           attendanceResult.error.message
         );
 
@@ -2642,20 +2642,20 @@
 
 
       renderRoleAnalysis(
-        attendance
+        status
       );
 
 
       const missionCount =
         calculateMissionCount(
-          attendance
+          status
         );
 
 
       const missionIds =
         [
           ...new Set(
-            attendance
+            status
               .map(
                 row =>
                   row.mission_id
@@ -2717,7 +2717,7 @@
 
 
       renderMissions(
-        attendance,
+        status,
         missionMap
       );
 
