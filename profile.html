@@ -2431,9 +2431,7 @@
         await requireAuth();
 
       if (!session) {
-
         return;
-
       }
 
       const sb =
@@ -2442,359 +2440,432 @@
       const userId =
         session.user.id;
 
-
       const [
         profileResult,
-        progressResult,
-        rankProgressResult,
-        attendanceResult,
-        certResult
+        ranksResult,
+        signupsResult,
+        missionsResult,
+        certCatalogResult,
+        userCertsResult,
+        specRanksResult,
+        specAssignmentsResult
       ] =
         await Promise.all([
 
           sb
-            .from(
-              "profiles"
-            )
+            .from("profiles")
             .select("*")
-            .eq(
-              "user_id",
-              userId
-            )
+            .eq("user_id", userId)
             .maybeSingle(),
 
           sb
-            .from(
-              "v_user_progress"
-            )
+            .from("ranks")
             .select("*")
-            .eq(
-              "user_id",
-              userId
-            )
-            .maybeSingle(),
+            .order("sort_order", { ascending:true }),
 
           sb
-            .from(
-              "v_user_rank_progress"
-            )
-            .select("*")
-            .eq(
-              "user_id",
-              userId
-            )
-            .maybeSingle(),
+            .from("mission_signups")
+            .select("mission_id,status,operational_role,attendance_confirmed")
+            .eq("user_id", userId),
 
           sb
-            .from(
-              "mission_signups"
-            )
-            .select(
-              "mission_id,status,operational_role"
-            )
-            .eq(
-              "user_id",
-              userId
-            ),
+            .from("missions")
+            .select("id,title,start_time,hours"),
 
           sb
-            .from(
-              "v_user_certifications"
-            )
+            .from("certifications")
             .select("*")
-            .eq(
-              "user_id",
-              userId
-            )
+            .order("sort_order", { ascending:true }),
+
+          sb
+            .from("user_certifications")
+            .select("certification_code,awarded_at")
+            .eq("user_id", userId),
+
+          sb
+            .from("academy_specialisation_ranks")
+            .select("user_id,specialisation_code,rank_id,started_at,updated_at")
+            .eq("user_id", userId),
+
+          sb
+            .from("academy_specialisation_assignments")
+            .select("user_id,specialisation_code")
+            .eq("user_id", userId)
 
         ]);
 
-
-      if (
-        profileResult.error
-      ) {
-
+      if (profileResult.error) {
         throw profileResult.error;
-
       }
-
 
       const profile = {
         ...(profileResult.data || {})
       };
 
-      // Keep the profile page independent of the profile view.
-      // Map the existing profiles columns to the names used by the renderer.
+      const ranks =
+        ranksResult.error
+          ? []
+          : ranksResult.data || [];
+
+      const currentRank =
+        ranks.find(
+          row =>
+            Number(row.id) ===
+            Number(profile.current_rank_id)
+        )
+        ||
+        ranks.find(
+          row =>
+            String(row.code || "").toUpperCase() ===
+            String(profile.rank_code || "").toUpperCase()
+        )
+        ||
+        null;
+
       profile.current_rank_name =
         profile.current_rank_name ||
+        currentRank?.name ||
         profile.rank_code ||
         "Unrated";
 
       profile.current_rank_code =
         profile.current_rank_code ||
+        currentRank?.code ||
         profile.rank_code ||
         "—";
 
       profile.current_rank_image_url =
         profile.current_rank_image_url ||
+        currentRank?.image_url ||
         profile.rank_image_url ||
         "";
 
       profile.current_rank_category =
         profile.current_rank_category ||
+        currentRank?.category ||
         profile.rank_category ||
         "Personnel";
+
+      const signups =
+        signupsResult.error
+          ? []
+          : signupsResult.data || [];
+
+      const missions =
+        missionsResult.error
+          ? []
+          : missionsResult.data || [];
+
+      const missionMap =
+        new Map(
+          missions.map(
+            mission => [
+              mission.id,
+              mission
+            ]
+          )
+        );
+
+      const completedSignups =
+        signups.filter(
+          row => {
+            if (row.attendance_confirmed !== true) {
+              return false;
+            }
+
+            const mission =
+              missionMap.get(row.mission_id);
+
+            if (!mission?.start_time) {
+              return false;
+            }
+
+            const startTime =
+              new Date(mission.start_time).getTime();
+
+            const hours =
+              Number(mission.hours || 0);
+
+            return (
+              Number.isFinite(startTime) &&
+              Date.now() >=
+                startTime +
+                Math.max(hours, 0) * 3600000
+            );
+          }
+        );
+
+      const missionCount =
+        new Set(
+          completedSignups.map(
+            row => row.mission_id
+          )
+        ).size;
+
+      const hours =
+        completedSignups.reduce(
+          (total, row) => {
+            const mission =
+              missionMap.get(row.mission_id);
+
+            return total +
+              Number(mission?.hours || 0);
+          },
+          0
+        );
+
+      const awardedCodes =
+        new Set(
+          (
+            userCertsResult.error
+              ? []
+              : userCertsResult.data || []
+          ).map(
+            row =>
+              String(row.certification_code || "")
+                .toUpperCase()
+          )
+        );
+
+      const certs =
+        (
+          certCatalogResult.error
+            ? []
+            : certCatalogResult.data || []
+        ).map(
+          cert => ({
+            ...cert,
+            owned:
+              awardedCodes.has(
+                String(cert.certification_code || "")
+                  .toUpperCase()
+              )
+          })
+        );
+
+      const currentCategory =
+        currentRank?.category ||
+        profile.current_rank_category ||
+        profile.rank_category ||
+        null;
+
+      const topByCategory =
+        new Map();
+
+      ranks.forEach(
+        rank => {
+          const category =
+            String(rank.category || "");
+
+          const previous =
+            topByCategory.get(category);
+
+          if (
+            !previous ||
+            Number(rank.sort_order || 0) >
+            Number(previous.sort_order || 0)
+          ) {
+            topByCategory.set(category, rank);
+          }
+        }
+      );
+
+      const isTopRank =
+        currentCategory &&
+        currentRank &&
+        topByCategory.get(currentCategory)?.id ===
+          currentRank.id;
+
+      const effectiveCategory =
+        isTopRank && profile.rank_track
+          ? profile.rank_track
+          : currentCategory;
+
+      const nextRank =
+        ranks
+          .filter(
+            rank =>
+              String(rank.category || "") ===
+                String(effectiveCategory || "") &&
+              Number(rank.sort_order || 0) >
+                Number(currentRank?.sort_order ?? -999) &&
+              rank.is_active !== false
+          )
+          .sort(
+            (a,b) =>
+              Number(a.sort_order || 0) -
+              Number(b.sort_order || 0)
+          )[0]
+        ||
+        null;
+
+      const missionsRequired =
+        Number(
+          nextRank?.missions_target || 0
+        );
+
+      const hoursRequired =
+        Number(
+          nextRank?.hours_target || 0
+        );
+
+      const certsRequired =
+        Number(
+          nextRank?.certification_target || 0
+        );
+
+      const missionPct =
+        missionsRequired > 0
+          ? Math.min(1, missionCount / missionsRequired)
+          : 1;
+
+      const hoursPct =
+        hoursRequired > 0
+          ? Math.min(1, hours / hoursRequired)
+          : 1;
+
+      const certPct =
+        certsRequired > 0
+          ? Math.min(
+              1,
+              awardedCodes.size / certsRequired
+            )
+          : 1;
+
+      const rankProgress = {
+        next_rank_code:
+          nextRank?.code || "—",
+        next_rank_name:
+          nextRank?.name || "",
+        missions_required:
+          missionsRequired,
+        hours_required:
+          hoursRequired,
+        certifications_required:
+          certsRequired,
+        progress_percent:
+          (
+            (missionPct + hoursPct + certPct) /
+            3
+          ) * 100
+      };
+
+      const specRankRows =
+        specRanksResult.error
+          ? []
+          : specRanksResult.data || [];
+
+      const specAssignments =
+        specAssignmentsResult.error
+          ? []
+          : specAssignmentsResult.data || [];
+
+      const specialisationRanks =
+        specRankRows.map(
+          row => {
+            const rank =
+              ranks.find(
+                item =>
+                  Number(item.id) ===
+                  Number(row.rank_id)
+              );
+
+            return {
+              ...row,
+              rank_code:
+                rank?.code || "",
+              rank_name:
+                rank?.name || "",
+              paygrade:
+                rank?.paygrade || "",
+              rank_image_url:
+                rank?.image_url || "",
+              is_active:
+                specAssignments.some(
+                  assignment =>
+                    assignment.specialisation_code ===
+                    row.specialisation_code
+                )
+            };
+          }
+        );
 
       profile.operational_role =
         profile.operational_role ||
         profile.ingame_role ||
         "";
 
-      const userProgress =
-        progressResult.data ||
-        null;
-
-      const rankProgress =
-        rankProgressResult.data ||
-        null;
-
-      const status =
-        attendanceResult.error
-          ? []
-          : attendanceResult.data || [];
-
-      const certs =
-        certResult.error
-          ? []
-          : certResult.data || [];
-
-
-      if (
-        progressResult.error
-      ) {
-
-        console.warn(
-          "v_user_progress:",
-          progressResult.error.message
-        );
-
-      }
-
-
-      if (
-        rankProgressResult.error
-      ) {
-
-        console.warn(
-          "v_user_rank_progress:",
-          rankProgressResult.error.message
-        );
-
-      }
-
-
-      if (
-        attendanceResult.error
-      ) {
-
+      if (signupsResult.error) {
         console.warn(
           "mission_signups:",
-          attendanceResult.error.message
+          signupsResult.error.message
         );
-
       }
 
-
-      if (
-        certResult.error
-      ) {
-
+      if (ranksResult.error) {
         console.warn(
-          "v_user_certifications:",
-          certResult.error.message
+          "ranks:",
+          ranksResult.error.message
         );
-
       }
 
-
-      let discord =
-        null;
-
-
-      if (
-        window.JMBNAvatars
-      ) {
-
-        discord =
-          await window.JMBNAvatars
-            .getDiscordLink(
-              sb,
-              userId
-            );
-
+      if (certCatalogResult.error) {
+        console.warn(
+          "certifications:",
+          certCatalogResult.error.message
+        );
       }
-
 
       renderIdentity(
         profile,
-        discord
+        null
       );
-
-
-      const {
-        data:specialisationRanks,
-        error:specialisationRankError
-      } =
-        await sb.rpc(
-          "member_specialisation_ranks",
-          {
-            p_user:userId
-          }
-        );
-
-
-      if(specialisationRankError){
-
-        console.warn(
-          "member_specialisation_ranks:",
-          specialisationRankError.message
-        );
-
-      }
-
 
       renderSpecialisationRanks(
-        specialisationRankError
-          ? []
-          : specialisationRanks || []
+        specialisationRanks
       );
-
 
       renderRoleAnalysis(
-        status
+        signups
       );
-
-
-      const missionCount =
-        calculateMissionCount(
-          status
-        );
-
-
-      const missionIds =
-        [
-          ...new Set(
-            status
-              .map(
-                row =>
-                  row.mission_id
-              )
-              .filter(Boolean)
-          )
-        ];
-
-
-      let missionMap =
-        new Map();
-
-
-      if (
-        missionIds.length
-      ) {
-
-        const {
-          data:missions,
-          error:missionError
-        } =
-          await sb
-            .from(
-              "missions"
-            )
-            .select("*")
-            .in(
-              "id",
-              missionIds
-            );
-
-
-        if (
-          missionError
-        ) {
-
-          console.warn(
-            "missions:",
-            missionError.message
-          );
-
-        }
-        else {
-
-          missionMap =
-            new Map(
-              (missions || [])
-                .map(
-                  mission => [
-                    mission.id,
-                    mission
-                  ]
-                )
-            );
-
-        }
-
-      }
-
 
       renderMissions(
-        status,
+        signups,
         missionMap
       );
-
 
       renderCertifications(
         certs
       );
 
-
-      const hours =
-        numberValue(
-          userProgress,
-          [
-            "hours_total",
-            "total_hours",
-            "operational_hours",
-            "hours"
-          ],
-          0
-        );
-
-
-      const certCount =
-        certs
-          .filter(
-            row =>
-              row.owned !== false
-          )
-          .length;
-
-
       $("#kHours")
         .textContent =
-          formatHours(
-            hours
-          );
-
+          formatHours(hours);
 
       renderProgress(
         rankProgress,
         profile,
         missionCount,
         hours,
-        certCount
+        certs.filter(
+          row => row.owned !== false
+        ).length
       );
 
-    }
+      if (window.JMBNAvatars) {
+        const discord =
+          await window.JMBNAvatars.getDiscordLink(
+            sb,
+            userId
+          );
 
+        renderIdentity(
+          profile,
+          discord
+        );
+      }
+
+    }
 
     document.addEventListener(
       "DOMContentLoaded",
