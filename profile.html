@@ -1856,12 +1856,14 @@
       const rankName =
         titleCase(
           profile?.current_rank_name ||
+          profile?.rank_code ||
           "Unrated"
         );
 
       const rankCode =
         String(
           profile?.current_rank_code ||
+          profile?.rank_code ||
           "—"
         )
           .toUpperCase();
@@ -2452,7 +2454,7 @@
 
           sb
             .from(
-              "v_profiles_detailed"
+              "profiles"
             )
             .select("*")
             .eq(
@@ -2517,9 +2519,36 @@
       }
 
 
-      const profile =
-        profileResult.data ||
-        {};
+      const profile = {
+        ...(profileResult.data || {})
+      };
+
+      // Keep the profile page independent of v_profiles_detailed.
+      // Map the existing profiles columns to the names used by the renderer.
+      profile.current_rank_name =
+        profile.current_rank_name ||
+        profile.rank_code ||
+        "Unrated";
+
+      profile.current_rank_code =
+        profile.current_rank_code ||
+        profile.rank_code ||
+        "—";
+
+      profile.current_rank_image_url =
+        profile.current_rank_image_url ||
+        profile.rank_image_url ||
+        "";
+
+      profile.current_rank_category =
+        profile.current_rank_category ||
+        profile.rank_category ||
+        "Personnel";
+
+      profile.operational_role =
+        profile.operational_role ||
+        profile.ingame_role ||
+        "";
 
       const userProgress =
         progressResult.data ||
